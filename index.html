@@ -1,133 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Clock2Doc</title>
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; padding: 40px; }
-    .container { max-width: 900px; margin: auto; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-    label { font-weight: bold; display: block; margin-top: 15px; }
-    input, select, textarea { width: 100%; padding: 10px; margin-top: 6px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; }
-    .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
-    .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 6px; }
-    .buttons { margin-top: 30px; text-align: center; }
-    button { background: #0052cc; color: white; padding: 12px 24px; font-size: 15px; border: none; border-radius: 6px; margin: 0 10px; cursor: pointer; }
-    iframe { width: 100%; height: 600px; border: 1px solid #ccc; margin-top: 30px; border-radius: 6px; }
-    .logo-container { text-align: center; margin-bottom: 30px; }
-    .logo-container img { height: 140px; }
-    .summary-box { margin-top: 30px; padding: 20px; background: #f8faff; border: 1px solid #cce0ff; border-radius: 8px; }
-    .summary-box h3 { margin-top: 0; color: #0052cc; }
-    .summary-box p { margin: 5px 0; font-size: 16px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Clock2Doc Invoice Generator</title>
+    <link rel="icon" type="image/png" href="static/logo.png">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px auto;
+            max-width: 900px;
+            background-color: #f9f9f9;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        form {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px #ccc;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        #summary {
+            background: #eef;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo-container">
-      <h1>Clock2Doc</h1>
-    </div>
 
-    <form id="invoice-form" enctype="multipart/form-data">
-      <label>From:<input name="from_name" /></label>
-      <label>To:<input name="to_name" /></label>
-      <label>Invoice #: <input name="invoice_number" /></label>
-      <label>Invoice Date: <input type="date" name="invoice_date" /></label>
-      <label>Due Date: <input type="date" name="due_date" /></label>
-      <label>Hourly Rate: <input type="number" name="hourly_rate" step="0.01" /></label>
-      <label>Base Currency:
-        <select name="base_currency">
-          <option value="GBP">GBP – British Pound</option>
-          <option value="USD">USD – US Dollar</option>
-          <option value="EUR">EUR – Euro</option>
-          <option value="AUD">AUD – Australian Dollar</option>
-          <option value="ZAR">ZAR – South African Rand</option>
-          <option value="INR">INR – Indian Rupee</option>
-          <option value="NGN">NGN – Nigerian Naira</option>
-          <option value="CAD">CAD – Canadian Dollar</option>
-          <option value="JPY">JPY – Japanese Yen</option>
-          <option value="CHF">CHF – Swiss Franc</option>
+    <h1>
+        <img src="static/logo.png" alt="Clock2Doc Logo" style="height: 80px;"><br>
+        Clock2Doc Invoice Generator
+    </h1>
+
+    <form id="invoiceForm" method="POST" enctype="multipart/form-data" action="/upload" target="previewFrame">
+        <label for="csv_file">Upload Clockify CSV:</label>
+        <input type="file" id="csv_file" name="csv_file" required>
+
+        <label for="logo_file">Upload Logo (optional):</label>
+        <input type="file" id="logo_file" name="logo_file">
+
+        <label>From:</label>
+        <input type="text" name="from_name">
+
+        <label>To:</label>
+        <input type="text" name="to_name">
+
+        <label>Invoice Number:</label>
+        <input type="text" name="invoice_number">
+
+        <label>Invoice Date:</label>
+        <input type="date" name="invoice_date">
+
+        <label>Due Date:</label>
+        <input type="date" name="due_date">
+
+        <label>Hourly Rate:</label>
+        <input type="number" name="hourly_rate" step="0.01">
+
+        <label>Base Currency (e.g. £):</label>
+        <input type="text" name="base_currency">
+
+        <label>Bank Details:</label>
+        <textarea name="bank_details" rows="4" placeholder="Branch&#10;Branch Code&#10;Account Number&#10;Name"></textarea>
+
+        <label>Notes:</label>
+        <textarea name="notes" rows="3"></textarea>
+
+        <label>Do you have a monthly earnings goal?</label>
+        <input type="number" name="goal_amount" step="0.01" placeholder="e.g. 1000">
+
+        <label>Which days do you work?</label>
+        <select name="workdays" multiple>
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
         </select>
-      </label>
 
-      <label>Monthly Goal (optional): <input type="number" name="goal_amount" placeholder="e.g. 4000" /></label>
-      <label>Which days do you work?</label>
-      <div class="checkbox-group">
-        <label><input type="checkbox" name="workdays" value="0" checked> Mon</label>
-        <label><input type="checkbox" name="workdays" value="1" checked> Tue</label>
-        <label><input type="checkbox" name="workdays" value="2" checked> Wed</label>
-        <label><input type="checkbox" name="workdays" value="3" checked> Thu</label>
-        <label><input type="checkbox" name="workdays" value="4" checked> Fri</label>
-        <label><input type="checkbox" name="workdays" value="5"> Sat</label>
-        <label><input type="checkbox" name="workdays" value="6"> Sun</label>
-      </div>
+        <label>Choose Theme:</label>
+        <select name="theme">
+            <option value="default">Default</option>
+        </select>
 
-      <label>Bank Details:<textarea name="bank_details" rows="4" placeholder="Branch\nBranch Code\nAccount Number\nName"></textarea></label>
-      <label>Additional Notes:<textarea name="notes" rows="3" placeholder="e.g. Thank you for your business!"></textarea></label>
-      <label>Upload Logo (optional):<input type="file" name="logo" accept="image/*" /></label>
-      <label>Upload Clockify CSV:<input type="file" name="clockify_csv" id="clockify_csv" accept=".csv" required /></label>
+        <label>Choose Orientation:</label>
+        <select name="orientation">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+        </select>
 
-      <div class="buttons">
-        <button type="button" onclick="sendForm('preview')">Preview</button>
-        <button type="button" onclick="sendForm('download')">Download</button>
-      </div>
+        <label>Download Format:</label>
+        <select name="output_format">
+            <option value="pdf">PDF</option>
+        </select>
+
+        <button type="button" onclick="fetchSummary()">Preview Summary</button>
+        <button type="submit">Generate Invoice</button>
     </form>
 
-    <div class="summary-box" id="earnings-summary" style="display:none;">
-      <h3>Earnings Summary</h3>
-      <p><strong>Income so far:</strong> £<span id="income-so-far">0</span></p>
-      <p><strong>Projected Income:</strong> £<span id="projected-income">0</span></p>
-      <p><strong>Remaining Workdays:</strong> <span id="remaining-days">0</span></p>
-      <p><strong>Required Avg Hours/Day:</strong> <span id="needed-avg">0</span> hrs</p>
+    <div id="summary" style="display: none;">
+        <h3>Summary</h3>
+        <p><strong>Total Hours:</strong> <span id="total_hours"></span></p>
+        <p><strong>Days Worked:</strong> <span id="days_worked"></span></p>
     </div>
 
-    <iframe id="preview-frame"></iframe>
-  </div>
+    <h2>Invoice Preview</h2>
+    <iframe name="previewFrame" width="100%" height="600px" style="border: 1px solid #ccc;"></iframe>
 
-  <script>
-    const today = new Date().toISOString().split("T")[0];
-    document.querySelector('input[name="invoice_date"]').value = today;
-    const due = new Date(); due.setDate(due.getDate() + 7);
-    document.querySelector('input[name="due_date"]').value = due.toISOString().split('T')[0];
+    <script>
+        function fetchSummary() {
+            const form = document.getElementById('invoiceForm');
+            const formData = new FormData(form);
 
-    function sendForm(action) {
-      const form = document.getElementById("invoice-form");
-      const formData = new FormData(form);
-      formData.append("action", action);
-
-      const workdays = document.querySelectorAll("input[name='workdays']:checked");
-      workdays.forEach(day => formData.append("workdays", day.value));
-
-      // Fetch PDF
-      fetch("/upload", {
-        method: "POST",
-        body: formData
-      })
-      .then(r => r.blob())
-      .then(data => {
-        const url = URL.createObjectURL(data);
-        if (action === "preview") {
-          document.getElementById("preview-frame").src = url;
-        } else {
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "invoice.pdf";
-          a.click();
+            fetch('/summary', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+              .then(data => {
+                  if (data.error) {
+                      alert(data.error);
+                      return;
+                  }
+                  document.getElementById('total_hours').innerText = data.total_hours;
+                  document.getElementById('days_worked').innerText = data.days_worked;
+                  document.getElementById('summary').style.display = 'block';
+              }).catch(error => {
+                  alert("Summary error: " + error);
+              });
         }
-      });
+    </script>
 
-      // Fetch summary
-      fetch("/summary", {
-        method: "POST",
-        body: formData
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById("earnings-summary").style.display = "block";
-        document.getElementById("income-so-far").textContent = data.income_so_far;
-        document.getElementById("projected-income").textContent = data.projected_income;
-        document.getElementById("remaining-days").textContent = data.remaining_days;
-        document.getElementById("needed-avg").textContent = data.needed_avg_hours_per_day;
-      });
-    }
-  </script>
 </body>
 </html>

@@ -2,154 +2,110 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Clock2Doc Invoice Generator</title>
-    <link rel="icon" type="image/png" href="static/logo.png">
+    <title>Clock2Doc - Invoice Generator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 40px auto;
+            background: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
             max-width: 900px;
-            background-color: #f9f9f9;
-            padding: 20px;
+            margin: 40px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
         }
         h1 {
             text-align: center;
+            color: #222;
         }
         form {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px #ccc;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
         label {
-            display: block;
-            margin-top: 10px;
             font-weight: bold;
         }
-        input, select, textarea {
-            width: 100%;
-            padding: 8px;
-            margin-top: 5px;
+        input[type="text"],
+        input[type="email"],
+        input[type="file"],
+        input[type="number"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
         }
         button {
-            margin-top: 15px;
-            padding: 10px 20px;
-            font-size: 16px;
-        }
-        #summary {
-            background: #eef;
-            margin-top: 20px;
-            padding: 15px;
+            padding: 12px;
+            background-color: #2a73ff;
+            color: white;
+            border: none;
             border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1a5ee6;
+        }
+        iframe {
+            margin-top: 30px;
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>Clock2Doc Invoice Generator</h1>
+        <form id="invoiceForm" action="/upload" method="post" enctype="multipart/form-data" target="previewFrame">
+            <label for="csv_file">Upload Clockify CSV:</label>
+            <input type="file" id="csv_file" name="csv_file" accept=".csv" required>
 
-    <h1>
-        <img src="static/logo.png" alt="Clock2Doc Logo" style="height: 80px;"><br>
-        Clock2Doc Invoice Generator
-    </h1>
+            <label for="logo_file">Upload Logo (optional):</label>
+            <input type="file" id="logo_file" name="logo_file" accept="image/*">
 
-    <form id="invoiceForm" method="POST" enctype="multipart/form-data" action="/upload" target="previewFrame">
-        <label for="csv_file">Upload Clockify CSV:</label>
-        <input type="file" id="csv_file" name="csv_file" required>
+            <label for="business_name">Business Name:</label>
+            <input type="text" id="business_name" name="business_name">
 
-        <label for="logo_file">Upload Logo (optional):</label>
-        <input type="file" id="logo_file" name="logo_file">
+            <label for="client_name">Client Name:</label>
+            <input type="text" id="client_name" name="client_name">
 
-        <label>From:</label>
-        <input type="text" name="from_name">
+            <label for="invoice_number">Invoice Number:</label>
+            <input type="text" id="invoice_number" name="invoice_number">
 
-        <label>To:</label>
-        <input type="text" name="to_name">
+            <label for="hourly_rate">Hourly Rate (£):</label>
+            <input type="number" step="0.01" id="hourly_rate" name="hourly_rate">
 
-        <label>Invoice Number:</label>
-        <input type="text" name="invoice_number">
+            <div class="button-group">
+                <button type="submit">Generate Invoice</button>
+                <button type="button" onclick="downloadInvoice()">Download PDF</button>
+            </div>
+        </form>
 
-        <label>Invoice Date:</label>
-        <input type="date" name="invoice_date">
-
-        <label>Due Date:</label>
-        <input type="date" name="due_date">
-
-        <label>Hourly Rate:</label>
-        <input type="number" name="hourly_rate" step="0.01">
-
-        <label>Base Currency (e.g. £):</label>
-        <input type="text" name="base_currency">
-
-        <label>Bank Details:</label>
-        <textarea name="bank_details" rows="4" placeholder="Branch&#10;Branch Code&#10;Account Number&#10;Name"></textarea>
-
-        <label>Notes:</label>
-        <textarea name="notes" rows="3"></textarea>
-
-        <label>Do you have a monthly earnings goal?</label>
-        <input type="number" name="goal_amount" step="0.01" placeholder="e.g. 1000">
-
-        <label>Which days do you work?</label>
-        <select name="workdays" multiple>
-            <option value="0">Monday</option>
-            <option value="1">Tuesday</option>
-            <option value="2">Wednesday</option>
-            <option value="3">Thursday</option>
-            <option value="4">Friday</option>
-            <option value="5">Saturday</option>
-            <option value="6">Sunday</option>
-        </select>
-
-        <label>Choose Theme:</label>
-        <select name="theme">
-            <option value="default">Default</option>
-        </select>
-
-        <label>Choose Orientation:</label>
-        <select name="orientation">
-            <option value="portrait">Portrait</option>
-            <option value="landscape">Landscape</option>
-        </select>
-
-        <label>Download Format:</label>
-        <select name="output_format">
-            <option value="pdf">PDF</option>
-        </select>
-
-        <button type="button" onclick="fetchSummary()">Preview Summary</button>
-        <button type="submit">Generate Invoice</button>
-    </form>
-
-    <div id="summary" style="display: none;">
-        <h3>Summary</h3>
-        <p><strong>Total Hours:</strong> <span id="total_hours"></span></p>
-        <p><strong>Days Worked:</strong> <span id="days_worked"></span></p>
+        <iframe name="previewFrame" id="previewFrame"></iframe>
     </div>
 
-    <h2>Invoice Preview</h2>
-    <iframe name="previewFrame" width="100%" height="600px" style="border: 1px solid #ccc;"></iframe>
-
     <script>
-        function fetchSummary() {
-            const form = document.getElementById('invoiceForm');
-            const formData = new FormData(form);
+        document.getElementById("csv_file").addEventListener("change", function () {
+            document.getElementById("invoiceForm").submit();
+        });
 
-            fetch('/summary', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.json())
-              .then(data => {
-                  if (data.error) {
-                      alert(data.error);
-                      return;
-                  }
-                  document.getElementById('total_hours').innerText = data.total_hours;
-                  document.getElementById('days_worked').innerText = data.days_worked;
-                  document.getElementById('summary').style.display = 'block';
-              }).catch(error => {
-                  alert("Summary error: " + error);
-              });
+        function downloadInvoice() {
+            const form = document.getElementById("invoiceForm");
+            form.target = "_blank"; // open PDF in new tab to trigger download
+            form.action = "/download";
+            form.submit();
+            form.target = "previewFrame"; // reset preview for next preview
+            form.action = "/upload";
         }
     </script>
-
 </body>
 </html>

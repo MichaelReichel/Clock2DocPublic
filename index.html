@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Clock2Doc</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; padding: 40px; }
+    .container { max-width: 900px; margin: auto; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    input, select, textarea { width: 100%; padding: 10px; margin-top: 6px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 6px; }
+    .buttons { margin-top: 30px; text-align: center; }
+    button { background: #0052cc; color: white; padding: 12px 24px; font-size: 15px; border: none; border-radius: 6px; margin: 0 10px; cursor: pointer; }
+    iframe { width: 100%; height: 600px; border: 1px solid #ccc; margin-top: 30px; border-radius: 6px; }
+    .logo-container { text-align: center; margin-bottom: 30px; }
+    .logo-container img { height: 140px; }
+    .summary-box { margin-top: 30px; padding: 20px; background: #f8faff; border: 1px solid #cce0ff; border-radius: 8px; }
+    .summary-box h3 { margin-top: 0; color: #0052cc; }
+    .summary-box p { margin: 5px 0; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-container">
+      <h1>Clock2Doc</h1>
+    </div>
+
+    <form id="invoice-form" enctype="multipart/form-data">
+      <label>From:<input name="from_name" /></label>
+      <label>To:<input name="to_name" /></label>
+      <label>Invoice #: <input name="invoice_number" /></label>
+      <label>Invoice Date: <input type="date" name="invoice_date" /></label>
+      <label>Due Date: <input type="date" name="due_date" /></label>
+      <label>Hourly Rate: <input type="number" name="hourly_rate" step="0.01" /></label>
+      <label>Base Currency:
+        <select name="base_currency">
+          <option value="GBP">GBP – British Pound</option>
+          <option value="USD">USD – US Dollar</option>
+          <option value="EUR">EUR – Euro</option>
+          <option value="AUD">AUD – Australian Dollar</option>
+          <option value="ZAR">ZAR – South African Rand</option>
+          <option value="INR">INR – Indian Rupee</option>
+          <option value="NGN">NGN – Nigerian Naira</option>
+          <option value="CAD">CAD – Canadian Dollar</option>
+          <option value="JPY">JPY – Japanese Yen</option>
+          <option value="CHF">CHF – Swiss Franc</option>
+        </select>
+      </label>
+
+      <label>Monthly Goal (optional): <input type="number" name="goal_amount" placeholder="e.g. 4000" /></label>
+      <label>Which days do you work?</label>
+      <div class="checkbox-group">
+        <label><input type="checkbox" name="workdays" value="0" checked> Mon</label>
+        <label><input type="checkbox" name="workdays" value="1" checked> Tue</label>
+        <label><input type="checkbox" name="workdays" value="2" checked> Wed</label>
+        <label><input type="checkbox" name="workdays" value="3" checked> Thu</label>
+        <label><input type="checkbox" name="workdays" value="4" checked> Fri</label>
+        <label><input type="checkbox" name="workdays" value="5"> Sat</label>
+        <label><input type="checkbox" name="workdays" value="6"> Sun</label>
+      </div>
+
+      <label>Bank Details:<textarea name="bank_details" rows="4" placeholder="Branch\nBranch Code\nAccount Number\nName"></textarea></label>
+      <label>Additional Notes:<textarea name="notes" rows="3" placeholder="e.g. Thank you for your business!"></textarea></label>
+      <label>Upload Logo (optional):<input type="file" name="logo" accept="image/*" /></label>
+      <label>Upload Clockify CSV:<input type="file" name="clockify_csv" id="clockify_csv" accept=".csv" required /></label>
+
+      <div class="buttons">
+        <button type="button" onclick="sendForm('preview')">Preview</button>
+        <button type="button" onclick="sendForm('download')">Download</button>
+      </div>
+    </form>
+
+    <div class="summary-box" id="earnings-summary" style="display:none;">
+      <h3>Earnings Summary</h3>
+      <p><strong>Income so far:</strong> £<span id="income-so-far">0</span></p>
+      <p><strong>Projected Income:</strong> £<span id="projected-income">0</span></p>
+      <p><strong>Remaining Workdays:</strong> <span id="remaining-days">0</span></p>
+      <p><strong>Required Avg Hours/Day:</strong> <span id="needed-avg">0</span> hrs</p>
+    </div>
+
+    <iframe id="preview-frame"></iframe>
+  </div>
+
+  <script>
+    const today = new Date().toISOString().split("T")[0];
+    document.querySelector('input[name="invoice_date"]').value = today;
+    const due = new Date(); due.setDate(due.getDate() + 7);
+    document.querySelector('input[name="due_date"]').value = due.toISOString().split('T')[0];
+
+    function sendForm(action) {
+      const form = document.getElementById("invoice-form");
+      const formData = new FormData(form);
+      formData.append("action", action);
+
+      const workdays = document.querySelectorAll("input[name='workdays']:checked");
+      workdays.forEach(day => formData.append("workdays", day.value));
+
+      // Fetch PDF
+      fetch("/upload", {
+        method: "POST",
+        body: formData
+      })
+      .then(r => r.blob())
+      .then(data => {
+        const url = URL.createObjectURL(data);
+        if (action === "preview") {
+          document.getElementById("preview-frame").src = url;
+        } else {
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "invoice.pdf";
+          a.click();
+        }
+      });
+
+      // Fetch summary
+      fetch("/summary", {
+        method: "POST",
+        body: formData
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("earnings-summary").style.display = "block";
+        document.getElementById("income-so-far").textContent = data.income_so_far;
+        document.getElementById("projected-income").textContent = data.projected_income;
+        document.getElementById("remaining-days").textContent = data.remaining_days;
+        document.getElementById("needed-avg").textContent = data.needed_avg_hours_per_day;
+      });
+    }
+  </script>
+</body>
+</html>

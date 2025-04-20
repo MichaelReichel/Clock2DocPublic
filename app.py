@@ -1,16 +1,13 @@
-from flask import Flask, render_template, request, send_file, jsonify
-from weasyprint import HTML
+from flask import Flask, render_template, request, send_file
 import pandas as pd
 from io import BytesIO
-import calendar
-from datetime import datetime, timedelta
+from weasyprint import HTML
 import os
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = "uploads"
 
-# In-memory storage
-csv_data = None
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route("/")
 def index():
@@ -18,156 +15,88 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload_invoice():
-    global csv_data
+    try:
+        file = request.files["csvFile"]
+        company_name = request.form.get("companyName", "")
+        company_address = request.form.get("companyAddress", "")
+        client_name = request.form.get("clientName", "")
+        client_address = request.form.get("clientAddress", "")
+        hourly_rate = float(request.form.get("hourlyRate", "0"))
+        invoice_number = request.form.get("invoiceNumber", "")
+        invoice_date = request.form.get("invoiceDate", "")
+        due_date = request.form.get("dueDate", "")
+        bank_details = request.form.get("bankDetails", "")
+        earnings_goal = request.form.get("earningsGoal", "")
+        working_days = request.form.getlist("workingDays")
 
-    csv_file = request.files["csv_file"]
-    df = pd.read_csv(csv_file)
+        if not file:
+            return "No file uploaded", 400
 
-    from_name = request.form.get("from_name", "")
-    to_name = request.form.get("to_name", "")
-    invoice_number = request.form.get("invoice_number", "")
-    invoice_date = request.form.get("invoice_date", "")
-    due_date = request.form.get("due_date", "")
-    hourly_rate = float(request.form.get("hourly_rate", 0) or 0)
-    base_currency = request.form.get("base_currency", "")
-    bank_details = request.form.get("bank_details", "")
-    notes = request.form.get("notes", "")
-    goal_amount = float(request.form.get("goal_amount", 0) or 0)
-    workdays = list(map(int, request.form.getlist("workdays")))
+        df = pd.read_csv(file)
 
-    df["Duration (h)"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
+        # Fix for CSVs with different column names
+        if "Duration" in df.columns:
+            duration_col = "Duration"
+        elif "Duration (h)" in df.columns:
+            duration_col = "Duration (h)"
+        else:
+            return "CSV is missing a 'Duration' or 'Duration (h)' column.", 400
 
-    # Store data in memory
-    csv_data = {
-        "df": df,
-        "from_name": from_name,
-        "to_name": to_name,
-        "invoice_number": invoice_number,
-        "invoice_date": invoice_date,
-        "due_date": due_date,
-        "hourly_rate": hourly_rate,
-        "base_currency": base_currency,
-        "bank_details": bank_details,
-        "notes": notes,
-        "goal_amount": goal_amount,
-        "workdays": workdays,
-    }
+        if duration_col == "Duration":
+            df["Duration (h)"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
+        else:
+            df["Duration (h)"] = df[duration_col]
 
-    buffer = BytesIO()
-    generate_invoice_pdf(buffer, csv_data)
-    buffer.seek(0)
+        grouped = df.groupby("Project")["Duration (h)"].sum().reset_index()
+        grouped["Amount"] = grouped["Duration (h)"] * hourly_rate
 
-    return send_file(buffer, mimetype="application/pdf")
+        total_hours = grouped["Duration (h)"].sum()
+        total_amount = grouped["Amount"].sum()
+
+        buffer = BytesIO()
+        html = HTML(string=f"""
+            <h1>Invoice</h1>
+            <p><strong>Invoice Number:</strong> {invoice_number}</p>
+            <p><strong>Invoice Date:</strong> {invoice_date}</p>
+            <p><strong>Due Date:</strong> {due_date}</p>
+            <p><strong>Company:</strong> {company_name}</p>
+            <p>{company_address.replace('\n', '<br>')}</p>
+            <p><strong>Client:</strong> {client_name}</p>
+            <p>{client_address.replace('\n', '<br>')}</p>
+            <hr>
+            <table style="width:100%; border-collapse: collapse;" border="1" cellpadding="6">
+                <thead>
+                    <tr>
+                        <th>Project</th>
+                        <th>Hours</th>
+                        <th>Rate</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join([f"<tr><td>{row['Project']}</td><td>{row['Duration (h)']:.2f}</td><td>£{hourly_rate:.2f}</td><td>£{row['Amount']:.2f}</td></tr>" for _, row in grouped.iterrows()])}
+                </tbody>
+            </table>
+            <h3>Total: £{total_amount:.2f}</h3>
+            <hr>
+            <p><strong>Bank Details:</strong><br>{bank_details.replace('\n', '<br>')}</p>
+        """)
+        html.write_pdf(buffer)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=False,
+            download_name=f"invoice_{invoice_number}.pdf",
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+        return str(e), 500
 
 @app.route("/summary", methods=["POST"])
 def summary():
-    global csv_data
-    if not csv_data:
-        return jsonify({"error": "No data available"}), 400
-
-    df = csv_data["df"]
-    hourly_rate = csv_data["hourly_rate"]
-    goal_amount = csv_data["goal_amount"]
-    workdays = csv_data["workdays"]
-
-    df["Start date"] = pd.to_datetime(df["Start"])
-    df["Work day"] = df["Start date"].dt.weekday
-    df = df[df["Work day"].isin(workdays)]
-
-    now = datetime.now()
-    month_start = now.replace(day=1)
-    next_month = month_start + timedelta(days=32)
-    month_end = next_month.replace(day=1) - timedelta(days=1)
-
-    remaining_days = [
-        month_start + timedelta(days=i)
-        for i in range((month_end - month_start).days + 1)
-        if (month_start + timedelta(days=i)).weekday() in workdays and
-        (month_start + timedelta(days=i)).date() >= now.date()
-    ]
-
-    remaining_workdays = len(remaining_days)
-    total_hours = df["Duration (h)"].sum()
-    earned_so_far = total_hours * hourly_rate
-    remaining_goal = max(goal_amount - earned_so_far, 0)
-    required_hours = remaining_goal / hourly_rate if hourly_rate else 0
-    avg_hours_per_day = required_hours / remaining_workdays if remaining_workdays else 0
-    avg_hours_so_far = total_hours / df["Start date"].dt.date.nunique()
-
-    return jsonify({
-        "earned_so_far": round(earned_so_far, 2),
-        "remaining_goal": round(remaining_goal, 2),
-        "required_hours": round(required_hours, 2),
-        "avg_hours_per_day": round(avg_hours_per_day, 2),
-        "avg_hours_so_far": round(avg_hours_so_far, 2),
-        "remaining_workdays": remaining_workdays,
-        "total_hours": round(total_hours, 2)
-    })
-
-def generate_invoice_pdf(buffer, data):
-    df = data["df"]
-    from_name = data["from_name"]
-    to_name = data["to_name"]
-    invoice_number = data["invoice_number"]
-    invoice_date = data["invoice_date"]
-    due_date = data["due_date"]
-    hourly_rate = data["hourly_rate"]
-    base_currency = data["base_currency"]
-    bank_details = data["bank_details"]
-    notes = data["notes"]
-
-    df["Duration (h)"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
-    df["Amount"] = df["Duration (h)"] * hourly_rate
-
-    rows = df[["Project", "Description", "Start", "Duration (h)", "Amount"]].values
-    rows_html = "\n".join(
-        f"<tr><td>{project}</td><td>{desc}</td><td>{start}</td><td>{hours:.2f}</td><td>{base_currency} {amount:.2f}</td></tr>"
-        for project, desc, start, hours, amount in rows
-    )
-
-    total_amount = df["Amount"].sum()
-
-    # Escape line breaks for HTML
-    bank_details_html = bank_details.replace('\n', '<br>')
-    notes_html = notes.replace('\n', '<br>')
-
-    html_template = f"""
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; font-size: 12px; }}
-            h1 {{ text-align: center; }}
-            table {{ width: 100%; border-collapse: collapse; }}
-            th, td {{ border: 1px solid #000; padding: 5px; text-align: left; }}
-            th {{ background-color: #f2f2f2; }}
-        </style>
-    </head>
-    <body>
-        <h1>Invoice</h1>
-        <p><strong>From:</strong> {from_name}</p>
-        <p><strong>To:</strong> {to_name}</p>
-        <p><strong>Invoice Number:</strong> {invoice_number}</p>
-        <p><strong>Invoice Date:</strong> {invoice_date}</p>
-        <p><strong>Due Date:</strong> {due_date}</p>
-        <table>
-            <tr>
-                <th>Project</th>
-                <th>Description</th>
-                <th>Start</th>
-                <th>Hours</th>
-                <th>Amount</th>
-            </tr>
-            {rows_html}
-        </table>
-        <h2>Total: {base_currency} {total_amount:.2f}</h2>
-        <div><strong>Bank Details:</strong><br>{bank_details_html}</div>
-        <br>
-        <div><strong>Notes:</strong><br>{notes_html}</div>
-    </body>
-    </html>
-    """
-
-    HTML(string=html_template).write_pdf(buffer)
+    return "Summary placeholder", 200
 
 if __name__ == "__main__":
     app.run(debug=True)

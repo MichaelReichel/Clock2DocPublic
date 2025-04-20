@@ -14,22 +14,20 @@ def index():
     return render_template("index.html")
 
 def parse_duration_column(df):
-    # Handle multiple possible column names from Clockify
-    if "Duration (h)" in df.columns:
-        df["Hours"] = pd.to_timedelta(df["Duration (h)"])
-        df["Hours"] = df["Hours"].dt.total_seconds() / 3600
-    elif "Duration" in df.columns:
+    if "Duration" in df.columns:
         df["Hours"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
     elif "Time (h)" in df.columns:
         df["Hours"] = pd.to_numeric(df["Time (h)"], errors="coerce")
+    elif "Duration (h)" in df.columns:
+        df["Hours"] = pd.to_numeric(df["Duration (h)"], errors="coerce")
     else:
-        raise ValueError("No valid duration column found.")
+        raise ValueError(f"No valid duration column found. Available columns: {', '.join(df.columns)}")
     return df
 
 @app.route("/upload", methods=["POST"])
 def upload_invoice():
     try:
-        file = request.files["csv_file"]
+        file = request.files.get("csv_file")
         if not file:
             return "No CSV uploaded", 400
 
@@ -45,9 +43,9 @@ def upload_invoice():
         total_amount = df["Amount"].sum()
         date_str = datetime.today().strftime("%Y-%m-%d")
 
-        # Optional logo
+        # Handle logo upload
         logo_path = ""
-        if "logo_file" in request.files and request.files["logo_file"].filename != "":
+        if "logo_file" in request.files and request.files["logo_file"].filename:
             logo = request.files["logo_file"]
             logo_filename = secure_filename(logo.filename)
             logo_path = os.path.join(UPLOAD_FOLDER, logo_filename)
@@ -63,7 +61,7 @@ def upload_invoice():
                                logo_path=logo_path)
 
         pdf_path = os.path.join(UPLOAD_FOLDER, "invoice_preview.pdf")
-        HTML(string=html).write_pdf(pdf_path)
+        HTML(string=html, base_url='.').write_pdf(pdf_path)
         return send_file(pdf_path, mimetype="application/pdf")
 
     except Exception as e:

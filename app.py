@@ -1,99 +1,119 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify, make_response
 import pandas as pd
-from io import BytesIO
+from datetime import datetime
 from weasyprint import HTML
+from jinja2 import Template
 import os
+import io
 
 app = Flask(__name__)
 
-@app.route("/")
+@app.route('/')
 def index():
-    return render_template("index.html")
+    return render_template('index.html')
 
-@app.route("/upload", methods=["POST"])
+@app.route('/summary', methods=['POST'])
+def summary():
+    try:
+        file = request.files['csv_file']
+        if not file:
+            return jsonify({'error': 'No file provided'}), 400
+
+        df = pd.read_csv(file)
+        df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')
+        df = df.dropna(subset=['Start Date'])
+
+        df['Date Only'] = df['Start Date'].dt.date
+        df['Duration (decimal)'] = pd.to_numeric(df['Duration (decimal)'], errors='coerce')
+        df = df.dropna(subset=['Duration (decimal)'])
+
+        total_hours = df['Duration (decimal)'].sum()
+        days_worked = df['Date Only'].nunique()
+
+        return jsonify({
+            'total_hours': round(total_hours, 2),
+            'days_worked': days_worked
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/upload', methods=['POST'])
 def upload_invoice():
     try:
-        file = request.files["csvFile"]
-        if not file:
-            return "No file uploaded", 400
+        action = request.form.get("action", "download")
+        csv_file = request.files['csv_file']
+        logo_file = request.files.get('logo_file')
 
-        # Extract form data
-        form = request.form
-        company_name = form.get("companyName", "")
-        company_address = form.get("companyAddress", "").replace("\n", "<br>")
-        client_name = form.get("clientName", "")
-        client_address = form.get("clientAddress", "").replace("\n", "<br>")
-        hourly_rate = float(form.get("hourlyRate", "0"))
-        invoice_number = form.get("invoiceNumber", "")
-        invoice_date = form.get("invoiceDate", "")
-        due_date = form.get("dueDate", "")
-        bank_details = form.get("bankDetails", "").replace("\n", "<br>")
+        from_name = request.form.get("from_name", "")
+        to_name = request.form.get("to_name", "")
+        invoice_number = request.form.get("invoice_number", "")
+        invoice_date = request.form.get("invoice_date", datetime.today().strftime('%Y-%m-%d'))
+        due_date = request.form.get("due_date", "")
+        hourly_rate = float(request.form.get("hourly_rate", 0))
+        base_currency = request.form.get("base_currency", "")
+        bank_details = request.form.get("bank_details", "")
+        notes = request.form.get("notes", "")
 
-        # Read CSV
-        df = pd.read_csv(file)
+        df = pd.read_csv(csv_file)
+        df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')
+        df = df.dropna(subset=['Start Date'])
 
-        if "Duration" in df.columns:
-            df["Duration (h)"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
-        elif "Duration (h)" in df.columns:
-            df["Duration (h)"] = df["Duration (h)"]
+        df['Date Only'] = df['Start Date'].dt.date
+        df['Duration (decimal)'] = pd.to_numeric(df['Duration (decimal)'], errors='coerce')
+        df = df.dropna(subset=['Duration (decimal)'])
+
+        total_hours = df['Duration (decimal)'].sum()
+        total_amount = total_hours * hourly_rate
+
+        # HTML template for PDF
+        html_template = Template("""
+        <html>
+        <body style="font-family: Arial, sans-serif;">
+            <h1>Invoice</h1>
+            <p><strong>From:</strong> {{ from_name }}</p>
+            <p><strong>To:</strong> {{ to_name }}</p>
+            <p><strong>Invoice Number:</strong> {{ invoice_number }}</p>
+            <p><strong>Date:</strong> {{ invoice_date }}</p>
+            <p><strong>Due Date:</strong> {{ due_date }}</p>
+            <hr>
+            <h3>Summary</h3>
+            <p>Total Hours: {{ total_hours }} hours</p>
+            <p>Hourly Rate: {{ hourly_rate }} {{ base_currency }}</p>
+            <p><strong>Total Amount:</strong> {{ total_amount }} {{ base_currency }}</p>
+            <hr>
+            <h4>Bank Details</h4>
+            <p>{{ bank_details }}</p>
+            <h4>Notes</h4>
+            <p>{{ notes }}</p>
+        </body>
+        </html>
+        """)
+
+        html_content = html_template.render(
+            from_name=from_name,
+            to_name=to_name,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            due_date=due_date,
+            hourly_rate=hourly_rate,
+            total_hours=round(total_hours, 2),
+            total_amount=round(total_amount, 2),
+            base_currency=base_currency,
+            bank_details=bank_details.replace('\n', '<br>'),
+            notes=notes
+        )
+
+        pdf = HTML(string=html_content).write_pdf()
+        response = make_response(pdf)
+        response.headers['Content-Type'] = 'application/pdf'
+        if action == "download":
+            response.headers['Content-Disposition'] = 'attachment; filename=invoice.pdf'
         else:
-            return "CSV missing 'Duration' or 'Duration (h)' column.", 400
-
-        grouped = df.groupby("Project")["Duration (h)"].sum().reset_index()
-        grouped["Amount"] = grouped["Duration (h)"] * hourly_rate
-
-        total_amount = grouped["Amount"].sum()
-
-        rows_html = "".join(
-            f"<tr><td>{row['Project']}</td><td>{row['Duration (h)']:.2f}</td><td>£{hourly_rate:.2f}</td><td>£{row['Amount']:.2f}</td></tr>"
-            for _, row in grouped.iterrows()
-        )
-
-        invoice_html = f"""
-        <h1>Invoice</h1>
-        <p><strong>Invoice Number:</strong> {invoice_number}</p>
-        <p><strong>Invoice Date:</strong> {invoice_date}</p>
-        <p><strong>Due Date:</strong> {due_date}</p>
-        <p><strong>Company:</strong> {company_name}</p>
-        <p>{company_address}</p>
-        <p><strong>Client:</strong> {client_name}</p>
-        <p>{client_address}</p>
-        <hr>
-        <table style="width:100%; border-collapse: collapse;" border="1" cellpadding="6">
-            <thead>
-                <tr>
-                    <th>Project</th>
-                    <th>Hours</th>
-                    <th>Rate</th>
-                    <th>Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows_html}
-            </tbody>
-        </table>
-        <h3>Total: £{total_amount:.2f}</h3>
-        <hr>
-        <p><strong>Bank Details:</strong><br>{bank_details}</p>
-        """
-
-        buffer = BytesIO()
-        HTML(string=invoice_html).write_pdf(buffer)
-        buffer.seek(0)
-
-        return send_file(
-            buffer,
-            as_attachment=False,
-            download_name=f"invoice_{invoice_number}.pdf",
-            mimetype="application/pdf"
-        )
+            response.headers['Content-Disposition'] = 'inline; filename=invoice.pdf'
+        return response
 
     except Exception as e:
-        return str(e), 500
+        return jsonify({'error': str(e)}), 500
 
-@app.route("/summary", methods=["POST"])
-def summary():
-    return "Summary placeholder", 200
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)

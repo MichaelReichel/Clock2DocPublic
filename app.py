@@ -14,8 +14,11 @@ def index():
     return render_template("index.html")
 
 def parse_duration_column(df):
-    # Flexible to Clockify formats
-    if "Duration" in df.columns:
+    # Handle multiple possible column names from Clockify
+    if "Duration (h)" in df.columns:
+        df["Hours"] = pd.to_timedelta(df["Duration (h)"])
+        df["Hours"] = df["Hours"].dt.total_seconds() / 3600
+    elif "Duration" in df.columns:
         df["Hours"] = pd.to_timedelta(df["Duration"]).dt.total_seconds() / 3600
     elif "Time (h)" in df.columns:
         df["Hours"] = pd.to_numeric(df["Time (h)"], errors="coerce")
@@ -43,14 +46,12 @@ def upload_invoice():
         date_str = datetime.today().strftime("%Y-%m-%d")
 
         # Optional logo
-        logo_filename = None
+        logo_path = ""
         if "logo_file" in request.files and request.files["logo_file"].filename != "":
             logo = request.files["logo_file"]
             logo_filename = secure_filename(logo.filename)
             logo_path = os.path.join(UPLOAD_FOLDER, logo_filename)
             logo.save(logo_path)
-        else:
-            logo_path = ""
 
         html = render_template("invoice_template.html",
                                business=business,
